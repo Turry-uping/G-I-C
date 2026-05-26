@@ -46,13 +46,15 @@ aux_source_directory(src/imu DIR_imu)
 aux_source_directory(src/vision DIR_vision)
 aux_source_directory(src/estimate DIR_estimate)
 aux_source_directory(src/fusion DIR_fusion)
+aux_source_directory(src/evaluation DIR_evaluation)
 list(APPEND DIR_ALL ${DIR_utility}
                     ${DIR_stream}
                     ${DIR_gnss}
                     ${DIR_imu}
                     ${DIR_vision}
                     ${DIR_estimate}
-                    ${DIR_fusion})
+                    ${DIR_fusion}
+                    ${DIR_evaluation})
 
 # library
 add_library(${PROJECT_NAME} SHARED ${DIR_ALL})
@@ -69,4 +71,8 @@ target_include_directories(${PROJECT_NAME}
 # executable
 add_executable(gici_main src/gici_main.cpp)
 target_link_libraries(gici_main 
+                      ${PROJECT_NAME})
+
+add_executable(evaluation_tests tools/evaluation/evaluation_tests.cpp)
+target_link_libraries(evaluation_tests
                       ${PROJECT_NAME})
