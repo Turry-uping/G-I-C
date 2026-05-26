@@ -12,6 +12,7 @@
 #include <glog/logging.h>
 #include <vikit/timer.h>
 
+#include "gici/stream/evaluation_formator.h"
 #include "gici/gnss/gnss_common.h"
 #include "gici/utility/transform.h"
 
@@ -1514,6 +1515,7 @@ std::shared_ptr<FormatorBase> makeFormator(const YAML::Node& node)
   MAP_FORMATOR(FormatorType::NMEA, NmeaFormator);
   MAP_FORMATOR(FormatorType::DcbFile, DcbFileFormator);
   MAP_FORMATOR(FormatorType::AtxFile, AtxFileFormator);
+  MAP_FORMATOR(FormatorType::Evaluation, EvaluationFormator);
   // LOG_UNSUPPORT;
   return nullptr;
 }

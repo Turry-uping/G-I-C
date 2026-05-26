@@ -1,10 +1,16 @@
 #include <cmath>
 #include <cstdlib>
+#include <fstream>
 #include <iostream>
+#include <memory>
+#include <sstream>
 #include <string>
 #include <vector>
 
+#include <yaml-cpp/yaml.h>
+
 #include "gici/evaluation/evaluation_utils.h"
+#include "gici/stream/formator.h"
 
 namespace {
 
@@ -22,6 +28,14 @@ void expectTrue(bool value, const std::string& name)
     std::cerr << name << " expected true" << std::endl;
     std::exit(1);
   }
+}
+
+std::string readFile(const std::string& path)
+{
+  std::ifstream input(path.c_str());
+  std::stringstream buffer;
+  buffer << input.rdbuf();
+  return buffer.str();
 }
 
 }  // namespace
@@ -65,6 +79,22 @@ int main()
   expectTrue(std::fabs(truth_enu.x()) > 0.1, "truth east nonzero");
   expectTrue(std::fabs(solution_enu.y()) > 0.1, "solution north nonzero");
   expectTrue(std::fabs(error_enu.z() - 0.3) < 1.0e-9, "up error");
+
+  YAML::Node node;
+  node["type"] = "evaluation";
+  node["truth_path"] = "tools/evaluation/fixtures/ie_truth_sample.txt";
+  node["output_csv"] = "/tmp/gici_evaluation_test.csv";
+  node["output_summary"] = "/tmp/gici_evaluation_test_summary.txt";
+  node["truth_format"] = "inertial-explorer";
+  std::shared_ptr<gici::FormatorBase> formator = gici::makeFormator(node);
+  expectTrue(static_cast<bool>(formator), "evaluation formator factory");
+  expectTrue(formator->getType() == gici::FormatorType::Evaluation, "evaluation formator type");
+  formator.reset();
+  const std::string summary = readFile("/tmp/gici_evaluation_test_summary.txt");
+  expectTrue(summary.find("translation_error_m") != std::string::npos,
+             "summary has translation stats header even with no aligned rows");
+  expectTrue(summary.find("skipped_before_truth") != std::string::npos,
+             "summary has skip counters");
 
   std::cout << "evaluation_tests passed" << std::endl;
   return 0;

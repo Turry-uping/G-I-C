@@ -36,7 +36,8 @@ enum class FormatorType {
   DcbFile,
   AtxFile, 
   Sp3File,
-  ClkFile
+  ClkFile,
+  Evaluation
 };
 
 // GNSS data types

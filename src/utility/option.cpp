@@ -86,6 +86,7 @@ void convert<std::string, FormatorType>
   MAP_IN_OUT("atx-file", FormatorType::AtxFile);
   MAP_IN_OUT("sp3-file", FormatorType::Sp3File);
   MAP_IN_OUT("clk-file", FormatorType::ClkFile);
+  MAP_IN_OUT("evaluation", FormatorType::Evaluation);
   
   LOG_INVALId;
 }
