@@ -140,8 +140,8 @@ Eigen::Vector3d llaDegToEnuMeters(
     const Eigen::Vector3d& lla_deg,
     const Eigen::Vector3d& origin_lla_deg)
 {
-  constexpr double kWgs84A = 6378137.0;
-  constexpr double kWgs84E2 = 6.69437999014e-3;
+  const double kWgs84A = 6378137.0;
+  const double kWgs84E2 = 6.69437999014e-3;
   const double lat_ref = origin_lla_deg.x() * M_PI / 180.0;
   const double lat = lla_deg.x() * M_PI / 180.0;
   const double lon_ref = origin_lla_deg.y() * M_PI / 180.0;

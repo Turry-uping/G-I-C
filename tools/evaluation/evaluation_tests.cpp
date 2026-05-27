@@ -7,6 +7,7 @@
 #include <string>
 #include <vector>
 
+#include <Eigen/Core>
 #include <yaml-cpp/yaml.h>
 
 #include "gici/evaluation/evaluation_utils.h"

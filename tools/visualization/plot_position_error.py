@@ -275,9 +275,40 @@ def write_csv(path, rows):
         "satellites",
     ]
     with open(path, "w", newline="", encoding="utf-8") as handle:
-        writer = csv.DictWriter(handle, fieldnames=fieldnames)
+        writer = csv.DictWriter(handle, fieldnames=fieldnames, extrasaction="ignore")
         writer.writeheader()
         writer.writerows(rows)
+
+
+def parse_evaluation_csv(path):
+    rows = []
+    with open(path, "r", encoding="utf-8", errors="replace", newline="") as handle:
+        reader = csv.DictReader(handle)
+        for raw in reader:
+            row = {}
+            for key, value in raw.items():
+                if key == "solution_status":
+                    row[key] = value
+                elif value == "":
+                    row[key] = 0.0
+                else:
+                    row[key] = float(value)
+
+            row["utc_tow"] = row["timestamp_gpst"]
+            row["elapsed"] = row["elapsed_s"]
+            row["solution_lon"] = row["solution_lon_deg"]
+            row["solution_lat"] = row["solution_lat_deg"]
+            row["solution_height"] = row["solution_height_m"]
+            row["truth_lon"] = row["truth_lon_deg"]
+            row["truth_lat"] = row["truth_lat_deg"]
+            row["truth_height"] = row["truth_height_m"]
+            row["ape_translation_m"] = row["translation_error_m"]
+            row["ape_horizontal_m"] = row["horizontal_error_m"]
+            row["spatial_error_m"] = row["translation_error_m"]
+            row["fix_quality"] = row.get("solution_status", "")
+            row["satellites"] = row.get("num_satellites", 0.0)
+            rows.append(row)
+    return rows
 
 
 def scale(value, src_min, src_max, dst_min, dst_max):
@@ -564,6 +595,7 @@ def write_summary(path, rows, metrics):
 
 def parse_args():
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--evaluation-csv", default=None)
     parser.add_argument("--solution", default="output/rtk_tc_solution.txt")
     parser.add_argument("--truth", default="/home/wbz/桌面/GICI/data/1.1/ground_truth.txt")
     parser.add_argument("--output-dir", default="tools/visualization/output")
@@ -577,14 +609,17 @@ def main():
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    solution_samples = parse_gici_nmea(solution_path)
-    truth_samples = parse_truth(truth_path)
-    if not solution_samples:
-        raise SystemExit(f"No GGA/RMC solution samples found in {solution_path}")
-    if len(truth_samples) < 2:
-        raise SystemExit(f"Not enough truth samples found in {truth_path}")
+    if args.evaluation_csv:
+        rows = parse_evaluation_csv(Path(args.evaluation_csv))
+    else:
+        solution_samples = parse_gici_nmea(solution_path)
+        truth_samples = parse_truth(truth_path)
+        if not solution_samples:
+            raise SystemExit(f"No GGA/RMC solution samples found in {solution_path}")
+        if len(truth_samples) < 2:
+            raise SystemExit(f"Not enough truth samples found in {truth_path}")
+        rows = align_errors(solution_samples, truth_samples)
 
-    rows = align_errors(solution_samples, truth_samples)
     if not rows:
         raise SystemExit("No overlapping timestamps between solution and truth")
 
@@ -596,7 +631,7 @@ def main():
     write_summary(output_dir / "summary.txt", rows, metrics)
 
     print(f"Aligned samples: {len(rows)}")
-    print(f"Time span: {rows[0]['utc_tow']:.3f} -> {rows[-1]['utc_tow']:.3f} UTC seconds-of-week")
+    print(f"Time span: {rows[0]['utc_tow']:.3f} -> {rows[-1]['utc_tow']:.3f} seconds-of-week")
     for key in ("ape_translation_m", "ape_horizontal_m", "east_error_m", "north_error_m", "up_error_m"):
         values = metrics[key]
         print(

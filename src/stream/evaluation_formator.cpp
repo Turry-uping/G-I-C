@@ -2,12 +2,12 @@
 
 #include <cmath>
 #include <iomanip>
-#include <map>
 #include <sstream>
 
 #include <glog/logging.h>
 
 #include "gici/evaluation/evaluation_utils.h"
+#include "gici/gnss/gnss_common.h"
 #include "gici/utility/transform.h"
 
 namespace gici {
@@ -22,6 +22,14 @@ namespace {
 double safeStd(double variance)
 {
   return variance > 0.0 ? std::sqrt(variance) : 0.0;
+}
+
+double utcTimestampToGpsTow(double timestamp)
+{
+  int week = 0;
+  const gtime_t utc_time = gnss_common::doubleToGtime(timestamp);
+  const gtime_t gps_time = utc2gpst(utc_time);
+  return time2gpst(gps_time, &week);
 }
 
 }  // namespace
@@ -103,25 +111,26 @@ void EvaluationFormator::writeHeader()
 
 bool EvaluationFormator::buildRow(const Solution& solution, EvaluationRow& row)
 {
-  if (!solution.coordinate) {
+  if (!solution.coordinate || solution.status == GnssSolutionStatus::None) {
     ++skips_.invalid_solution;
     return false;
   }
-  if (solution.timestamp < truth_.front().gps_time) {
+  const double solution_gps_tow = utcTimestampToGpsTow(solution.timestamp);
+  if (solution_gps_tow < truth_.front().gps_time) {
     ++skips_.before_truth;
     return false;
   }
-  if (solution.timestamp > truth_.back().gps_time) {
+  if (solution_gps_tow > truth_.back().gps_time) {
     ++skips_.after_truth;
     return false;
   }
 
   EvaluationTruthSample truth;
-  if (!interpolateTruth(truth_, solution.timestamp, truth_index_, truth)) {
+  if (!interpolateTruth(truth_, solution_gps_tow, truth_index_, truth)) {
     ++skips_.interpolation_failure;
     return false;
   }
-  while (truth_index_ + 1 < truth_.size() && truth_[truth_index_ + 1].gps_time < solution.timestamp) {
+  while (truth_index_ + 1 < truth_.size() && truth_[truth_index_ + 1].gps_time < solution_gps_tow) {
     ++truth_index_;
   }
 
@@ -134,7 +143,7 @@ bool EvaluationFormator::buildRow(const Solution& solution, EvaluationRow& row)
   Eigen::Vector3d truth_lla_deg(truth.latitude_deg, truth.longitude_deg, truth.height_m);
   if (!has_origin_) {
     origin_lla_deg_ = truth_lla_deg;
-    first_timestamp_ = solution.timestamp;
+    first_timestamp_ = solution_gps_tow;
     has_origin_ = true;
   }
 
@@ -144,10 +153,10 @@ bool EvaluationFormator::buildRow(const Solution& solution, EvaluationRow& row)
   Eigen::Vector3d rpy = quaternionToEulerAngle(solution.pose.getEigenQuaternion()) * R2D;
   Eigen::Vector3d velocity_error = solution.speed_and_bias.head<3>() - truth.velocity_enu_mps;
 
-  row.timestamp_gpst = solution.timestamp;
+  row.timestamp_gpst = solution_gps_tow;
   row.truth_gpst = truth.gps_time;
-  row.time_offset_s = solution.timestamp - truth.gps_time;
-  row.elapsed_s = solution.timestamp - first_timestamp_;
+  row.time_offset_s = solution_gps_tow - truth.gps_time;
+  row.elapsed_s = solution_gps_tow - first_timestamp_;
   row.solution_lon_deg = solution_lla_deg.y();
   row.solution_lat_deg = solution_lla_deg.x();
   row.solution_height_m = solution_lla_deg.z();
@@ -217,11 +226,14 @@ void EvaluationFormator::appendRow(const EvaluationRow& row)
        << row.std_east_m << "," << row.std_north_m << "," << row.std_up_m << ","
        << row.std_roll_deg << "," << row.std_pitch_deg << "," << row.std_yaw_deg << ","
        << row.std_velocity_east_mps << "," << row.std_velocity_north_mps << "," << row.std_velocity_up_mps << "\n";
+  csv_.flush();
+  if (rows_.size() % 100 == 0) {
+    writeSummary();
+  }
 }
 
 void EvaluationFormator::writeSummary()
 {
-  if (wrote_summary_) return;
   wrote_summary_ = true;
 
   std::ofstream output(option_.output_summary.c_str());

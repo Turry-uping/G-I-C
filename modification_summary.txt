@@ -1,0 +1,402 @@
+GICI 当前修改总结
+生成时间：2026-05-27
+
+一、修改总体目标
+
+本次工作区的修改主要围绕 RTK/IMU TC 伪实时配置的结果评估展开，目标是让
+`option/pseudo_real_time_estimation_RTK_TC.yaml` 在运行主程序时，不仅输出原有
+NMEA 解算结果，还能同步生成与 ground truth 对齐后的逐历元误差 CSV 和统计
+summary。同时，可视化脚本也被扩展为可以直接读取 evaluation CSV，从而复用
+程序内部已经计算好的误差结果。
+
+当前工作区包含 5 个已跟踪文件的修改：
+
+- `option/pseudo_real_time_estimation_RTK_TC.yaml`
+- `src/evaluation/evaluation_utils.cpp`
+- `src/stream/evaluation_formator.cpp`
+- `tools/evaluation/evaluation_tests.cpp`
+- `tools/visualization/plot_position_error.py`
+
+统计规模：
+
+- 85 行新增
+- 23 行删除
+- 净增 62 行
+
+
+二、配置文件修改
+
+文件：`option/pseudo_real_time_estimation_RTK_TC.yaml`
+
+1. 新增 evaluation 输出 streamer
+
+新增了一个文件输出节点：
+
+- tag：`str_tc_evaluation_file`
+- input_tags：`[fmt_tc_evaluation]`
+- type：`file`
+- path：`/home/wbz/桌面/GICI/gici-open/output/rtk_tc_evaluation_stream_sink.txt`
+- enable_time_tag：`false`
+
+这个 streamer 用于接收 evaluation formator 的流式输出。当前实际生成的
+`output/rtk_tc_evaluation_stream_sink.txt` 文件大小为 0，说明主要有效评估结果
+并不是通过这个 stream sink 文本承载，而是通过 evaluation formator 自己写出的
+CSV 和 summary 文件承载。
+
+2. 新增 evaluation formator
+
+新增输出 formator：
+
+- tag：`fmt_tc_evaluation`
+- type：`evaluation`
+- truth_path：`/home/wbz/桌面/GICI/gici-open/data/1.1/ground_truth.txt`
+- output_csv：`/home/wbz/桌面/GICI/gici-open/output/rtk_tc_evaluation.csv`
+- output_summary：`/home/wbz/桌面/GICI/gici-open/output/rtk_tc_evaluation_summary.txt`
+- truth_format：`inertial-explorer`
+
+这表示 RTK/IMU TC 解算结果会被送入 evaluation formator，与数据集 `1.1` 的
+ground truth 做时间对齐，并输出逐历元误差和汇总统计。
+
+3. estimator 输出标签增加 evaluation
+
+原配置：
+
+`output_tags: [fmt_tc_solution_file]`
+
+修改后：
+
+`output_tags: [fmt_tc_solution_file, fmt_tc_evaluation]`
+
+因此，同一次主程序运行会同时产生：
+
+- 原始 NMEA 解算结果：`output/rtk_tc_solution.txt`
+- 内置评估 CSV：`output/rtk_tc_evaluation.csv`
+- 内置评估汇总：`output/rtk_tc_evaluation_summary.txt`
+
+
+三、evaluation 工具函数修改
+
+文件：`src/evaluation/evaluation_utils.cpp`
+
+修改内容很小：
+
+- 将 `llaDegToEnuMeters()` 中的 WGS84 常量从 `constexpr double` 改为
+  `const double`。
+
+涉及常量：
+
+- WGS84 长半轴：`6378137.0`
+- WGS84 第一偏心率平方：`6.69437999014e-3`
+
+这个修改不改变数值含义，主要是编译兼容性或上下文限制层面的调整。函数仍然
+用于把经纬高差异近似转换为局部 ENU 米级坐标差。
+
+
+四、EvaluationFormator 修改
+
+文件：`src/stream/evaluation_formator.cpp`
+
+这是本次核心代码修改。
+
+1. 引入 GNSS 时间工具
+
+新增包含：
+
+`#include "gici/gnss/gnss_common.h"`
+
+并新增辅助函数：
+
+`utcTimestampToGpsTow(double timestamp)`
+
+该函数流程：
+
+- 将 double timestamp 转为 `gtime_t`
+- 通过 `utc2gpst()` 从 UTC 转为 GPST
+- 通过 `time2gpst()` 提取 GPS 周内秒
+
+修改目的：
+
+原先 evaluation 逻辑直接使用 `solution.timestamp` 与 truth 文件中的
+`gps_time` 比较。truth 文件使用的是 GPS 周内秒，而 solution timestamp 更接近
+UTC 时间戳语义，两者直接比较会导致时间基准不一致。现在统一转换为 GPS TOW
+后再进行真值对齐。
+
+2. 跳过无效解
+
+原判断只检查：
+
+`!solution.coordinate`
+
+现在改为：
+
+`!solution.coordinate || solution.status == GnssSolutionStatus::None`
+
+这可以避免把没有有效解状态的样本写入 evaluation CSV，减少无效统计。
+
+3. 所有对齐逻辑改用 GPS TOW
+
+以下逻辑都从 `solution.timestamp` 改为 `solution_gps_tow`：
+
+- 是否早于 truth 起点
+- 是否晚于 truth 终点
+- truth 插值
+- truth_index 推进
+- 首帧时间记录
+- CSV 中的 `timestamp_gpst`
+- CSV 中的 `time_offset_s`
+- CSV 中的 `elapsed_s`
+
+这样输出 CSV 的 `timestamp_gpst` 字段确实表示 GPS 周内秒，和
+`truth_gpst` 同一时间基准。
+
+4. CSV 实时 flush
+
+`appendRow()` 中新增：
+
+`csv_.flush();`
+
+这样主程序运行过程中，`output/rtk_tc_evaluation.csv` 会持续落盘，而不是等进程
+正常结束才一次性写出。这对长时间伪实时运行很有用，可以中途查看当前结果。
+
+5. summary 周期性更新
+
+`appendRow()` 中新增逻辑：
+
+每累计 100 行，调用一次 `writeSummary()`。
+
+同时 `writeSummary()` 去掉了“只写一次”的早退限制。现在 summary 文件会随着
+运行过程不断更新，便于实时观察当前统计结果。
+
+
+五、evaluation 测试文件修改
+
+文件：`tools/evaluation/evaluation_tests.cpp`
+
+新增：
+
+`#include <Eigen/Core>`
+
+这个修改用于补齐 Eigen 类型依赖，避免某些编译环境下由于间接包含不足导致
+evaluation 测试编译失败。
+
+
+六、可视化脚本修改
+
+文件：`tools/visualization/plot_position_error.py`
+
+1. CSV 写入兼容额外字段
+
+`csv.DictWriter` 新增：
+
+`extrasaction="ignore"`
+
+作用是当 row 中存在 fieldnames 未列出的字段时，忽略多余字段而不是报错。
+这让脚本更容易复用不同来源的行数据。
+
+2. 新增 `parse_evaluation_csv()`
+
+新增函数可以直接读取 `output/rtk_tc_evaluation.csv`，并把 evaluation CSV 的字段
+映射成可视化脚本内部统一使用的字段。
+
+关键映射包括：
+
+- `timestamp_gpst` -> `utc_tow`
+- `elapsed_s` -> `elapsed`
+- `solution_lon_deg` -> `solution_lon`
+- `solution_lat_deg` -> `solution_lat`
+- `solution_height_m` -> `solution_height`
+- `truth_lon_deg` -> `truth_lon`
+- `truth_lat_deg` -> `truth_lat`
+- `truth_height_m` -> `truth_height`
+- `translation_error_m` -> `ape_translation_m`
+- `horizontal_error_m` -> `ape_horizontal_m`
+- `solution_status` -> `fix_quality`
+- `num_satellites` -> `satellites`
+
+这意味着可视化脚本现在有两种输入模式：
+
+- 从 NMEA solution 和 truth 重新计算误差
+- 直接读取 evaluation CSV 中已经计算好的误差
+
+3. 新增命令行参数
+
+新增参数：
+
+`--evaluation-csv`
+
+如果提供该参数，脚本直接读取 evaluation CSV；否则仍沿用原有逻辑，从
+`--solution` 和 `--truth` 读取并对齐。
+
+4. 时间说明修正
+
+打印文本从：
+
+`UTC seconds-of-week`
+
+改为：
+
+`seconds-of-week`
+
+这是更准确的表述，因为当前数值实际是周内秒，不应强行称为 UTC。
+
+
+七、未跟踪文件与运行产物
+
+当前存在以下未跟踪文件或目录：
+
+1. `a.txt`
+
+内容是一些手工记录的构建和运行命令，包括：
+
+- GICI cmake 命令
+- GICI make 命令
+- GICI run 命令
+- Ceres cmake 命令
+
+2. `doc/GICI.pdf`
+
+大小约 3.0 MB。看起来是手工加入的论文或文档 PDF，目前未被 git 跟踪。
+
+3. `output/`
+
+本次运行生成的主程序输出目录。当前文件包括：
+
+- `output/rtk_tc_solution.txt`，约 432 KB
+- `output/rtk_tc_evaluation.csv`，约 1.1 MB
+- `output/rtk_tc_evaluation_summary.txt`，约 2.2 KB
+- `output/rtk_tc_evaluation_stream_sink.txt`，0 B
+
+4. `tools/visualization/output/`
+
+可视化脚本输出目录。当前文件包括：
+
+- `tools/visualization/output/ape.csv`，约 616 KB
+- `tools/visualization/output/summary.txt`，929 B
+- `tools/visualization/output/ape_timeseries.svg`，约 72 KB
+- `tools/visualization/output/enu_components.svg`，约 72 KB
+- `tools/visualization/output/trajectory_comparison.svg`，约 47 KB
+
+
+八、已执行验证
+
+1. 重新编译
+
+执行命令：
+
+`make -j8`
+
+结果：
+
+- `rtklib` 构建完成
+- `fast` 构建完成
+- `vikit_common` 构建完成
+- `svo` 构建完成
+- `gici` 构建完成
+- `evaluation_tests` 构建完成
+- `gici_main` 构建完成
+
+说明当前修改能够通过项目现有构建。
+
+2. 运行 RTK/IMU TC 配置
+
+执行命令：
+
+`./gici_main ../option/pseudo_real_time_estimation_RTK_TC.yaml`
+
+输出结果已经落盘到 `output/`。运行中日志显示 RTK/IMU TC 正常进入解算阶段，并
+持续输出迭代、固定状态、周跳检测、粗差剔除等信息。
+
+3. 运行可视化脚本
+
+执行命令：
+
+`python3 tools/visualization/plot_position_error.py --solution output/rtk_tc_solution.txt --truth data/1.1/ground_truth.txt --output-dir tools/visualization/output`
+
+结果：
+
+- 成功生成 APE CSV
+- 成功生成 summary
+- 成功生成三个 SVG 图
+
+
+九、当前误差结果摘要
+
+内置 evaluation summary：
+
+- 有效对齐样本数：1600
+- 时间跨度：159.957 s
+- 三维位置误差 RMS：0.328963 m
+- 水平位置误差 RMS：0.320476 m
+- East 方向误差 RMS：0.278832 m
+- North 方向误差 RMS：0.157980 m
+- Up 方向误差 RMS：0.074241 m
+- 三维速度误差 RMS：0.062608 m/s
+
+按 solution status 分组：
+
+- fixed 样本数：680，三维位置 RMS：0.328809 m
+- float 样本数：920，三维位置 RMS：0.329076 m
+
+可视化脚本 summary：
+
+- 样本数：1602
+- 三维 APE RMS：0.328971 m
+- 水平 APE RMS：0.320497 m
+- East 方向 RMS：0.278760 m
+- North 方向 RMS：0.158149 m
+- Up 方向 RMS：0.074185 m
+
+两套结果非常接近，说明内置 evaluation 与外部可视化脚本的误差计算基本一致。
+样本数存在 1600 和 1602 的轻微差异，原因是两条流程的数据来源和起止样本略有
+不同：内置 evaluation 直接使用估计器输出，外部脚本从 NMEA solution 文件重新
+解析。
+
+
+十、重要解读与注意事项
+
+1. 当前位置误差约为 0.33 m 级别
+
+当前 RTK/IMU TC 输出的三维位置 APE RMS 约为 0.329 m，水平 APE RMS 约为
+0.320 m。总误差主要来自水平面。
+
+2. East 方向误差贡献最大
+
+East 方向 RMS 约 0.279 m，明显大于 North 方向的 0.158 m 和 Up 方向的
+0.074 m。因此如果继续优化，应优先关注平面轨迹，尤其是 East 方向偏差来源。
+
+3. Up 方向存在稳定负偏差
+
+Up 方向 mean 约为 -0.073 m，表示解算高度整体比真值低约 7.3 cm。这是一个较稳定
+的系统性偏差。
+
+4. fixed 和 float 位置精度差异很小
+
+当前 fixed 样本和 float 样本的 translation RMS 都约为 0.329 m，没有体现明显
+精度差异。这可能说明当前误差主要受坐标/输出格式/对齐/杆臂/真值定义等因素影响，
+而不是单纯由模糊度固定状态决定。
+
+5. 姿态误差目前不宜直接作为精度结论
+
+内置 evaluation 给出的姿态误差很大，例如 attitude RMS 约 219 deg。结合 roll 和
+yaw 误差表现，这更像是姿态坐标系、欧拉角定义、heading/yaw 定义或车体/IMU/导航
+坐标转换没有统一，而不是单纯算法姿态估计发散。因此当前应优先把姿态评估口径校准
+清楚，再解读姿态精度。
+
+6. `differential_age_s` 字段异常
+
+当前 CSV 中 `differential_age_s` 出现了非常大的数值，不建议把它作为有效差分龄期
+解释。后续如果需要该字段，应检查 solution 中 differential_age 的来源和赋值逻辑。
+
+
+十一、当前修改的实际价值
+
+本次修改让 RTK/IMU TC 示例具备了更完整的自动评估能力：
+
+- 运行主程序即可同步生成逐历元误差 CSV
+- 可以实时刷新 summary，便于长时间运行时观察结果
+- 时间基准改为 GPS 周内秒，避免和 truth 文件错位
+- 可视化脚本可以复用 evaluation CSV，减少重复计算和字段不一致
+- 输出结果可以直接支持位置 APE、水平误差、ENU 分量误差、速度误差和状态分组分析
+
+整体上，这些修改把原来“只输出解算结果，再外部另算误差”的流程，推进到了“主程序
+运行时自动输出可分析误差结果”的流程。

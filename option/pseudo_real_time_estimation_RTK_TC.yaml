@@ -35,6 +35,12 @@ stream:
         type: file
         path: /home/wbz/桌面/GICI/gici-open/output/rtk_tc_solution.txt
         enable_time_tag: false
+    - streamer:
+        tag: str_tc_evaluation_file
+        input_tags: [fmt_tc_evaluation]
+        type: file
+        path: /home/wbz/桌面/GICI/gici-open/output/rtk_tc_evaluation_stream_sink.txt
+        enable_time_tag: false
     #- streamer:
     #    tag: str_solution_stream
     #    input_tags: [fmt_solution_stream]
@@ -94,6 +100,14 @@ stream:
         type: nmea 
         use_esa: true
         talker_id: GP
+    - formator:
+        io: output
+        tag: fmt_tc_evaluation
+        type: evaluation
+        truth_path: /home/wbz/桌面/GICI/gici-open/data/1.1/ground_truth.txt
+        output_csv: /home/wbz/桌面/GICI/gici-open/output/rtk_tc_evaluation.csv
+        output_summary: /home/wbz/桌面/GICI/gici-open/output/rtk_tc_evaluation_summary.txt
+        truth_format: inertial-explorer
 
 
   replay:
@@ -111,7 +125,7 @@ estimate:
     fmt_gnss_eph_roles: [ephemeris]
     fmt_dcb_file_roles: [code_bias]
     fmt_imu_roles: [major]
-    output_tags: [fmt_tc_solution_file]
+    output_tags: [fmt_tc_solution_file, fmt_tc_evaluation]
     # output_tags: [fmt_tc_solution_file, str_solution, str_solution_odometry, str_solution_path]
     output_align_tag: fmt_imu
     output_downsample_rate: 40
