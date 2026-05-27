@@ -75,6 +75,13 @@ def parse_gici_nmea(path):
                 )
                 continue
 
+            if sentence == "ESA" and current_tow is not None and samples:
+                if len(fields) >= 8 and fields[5] and fields[6] and fields[7]:
+                    samples[-1]["solution_roll"] = float(fields[5])
+                    samples[-1]["solution_pitch"] = float(fields[6])
+                    samples[-1]["solution_yaw"] = float(fields[7])
+                continue
+
             if sentence != "GGA" or current_tow is None:
                 continue
             if len(fields) < 12 or not fields[2] or not fields[4]:
@@ -115,12 +122,37 @@ def parse_truth(path):
                 lon = float(parts[3])
                 lat = float(parts[4])
                 height = float(parts[5])
+                heading = float(parts[6]) if len(parts) > 6 else 0.0
+                pitch = float(parts[7]) if len(parts) > 7 else 0.0
+                roll = float(parts[8]) if len(parts) > 8 else 0.0
             except ValueError:
                 continue
-            samples.append({"utc_tow": utc_tow, "lon": lon, "lat": lat, "height": height})
+            samples.append(
+                {
+                    "utc_tow": utc_tow,
+                    "lon": lon,
+                    "lat": lat,
+                    "height": height,
+                    "heading": heading,
+                    "pitch": pitch,
+                    "roll": roll,
+                }
+            )
 
     samples.sort(key=lambda item: item["utc_tow"])
     return samples
+
+
+def wrap_angle_deg(angle):
+    while angle >= 180.0:
+        angle -= 360.0
+    while angle < -180.0:
+        angle += 360.0
+    return angle
+
+
+def interpolate_angle_deg(left, right, ratio):
+    return wrap_angle_deg(left + wrap_angle_deg(right - left) * ratio)
 
 
 def interpolate_truth(truth, utc_tow, start_index):
@@ -144,6 +176,10 @@ def interpolate_truth(truth, utc_tow, start_index):
         "lat": left["lat"] + (right["lat"] - left["lat"]) * ratio,
         "height": left["height"] + (right["height"] - left["height"]) * ratio,
     }
+    if "heading" in left and "heading" in right:
+        interpolated["heading"] = interpolate_angle_deg(left["heading"], right["heading"], ratio)
+        interpolated["pitch"] = interpolate_angle_deg(left["pitch"], right["pitch"], ratio)
+        interpolated["roll"] = interpolate_angle_deg(left["roll"], right["roll"], ratio)
     return interpolated, index
 
 
@@ -183,7 +219,181 @@ def enu_offset(sample, origin):
     return east, north, up
 
 
-def align_errors(solution_samples, truth_samples):
+def add_enu_offset(sample, east, north, up):
+    lat_ref = math.radians(sample["lat"])
+    lon_ref = math.radians(sample["lon"])
+    m_radius, n_radius = radii_of_curvature(lat_ref)
+
+    lat = lat_ref + north / (m_radius + sample["height"])
+    lon = lon_ref + east / ((n_radius + sample["height"]) * math.cos(lat_ref))
+    adjusted = dict(sample)
+    adjusted["lat"] = math.degrees(lat)
+    adjusted["lon"] = math.degrees(lon)
+    adjusted["height"] = sample["height"] + up
+    return adjusted
+
+
+def identity_matrix():
+    return [
+        [1.0, 0.0, 0.0],
+        [0.0, 1.0, 0.0],
+        [0.0, 0.0, 1.0],
+    ]
+
+
+def mat_mul(left, right):
+    return [
+        [
+            sum(left[row][index] * right[index][col] for index in range(3))
+            for col in range(3)
+        ]
+        for row in range(3)
+    ]
+
+
+def mat_transpose(matrix):
+    return [[matrix[col][row] for col in range(3)] for row in range(3)]
+
+
+def mat_vec_mul(matrix, vector):
+    return [sum(matrix[row][col] * vector[col] for col in range(3)) for row in range(3)]
+
+
+def rotation_x(angle_rad):
+    cos_a = math.cos(angle_rad)
+    sin_a = math.sin(angle_rad)
+    return [
+        [1.0, 0.0, 0.0],
+        [0.0, cos_a, -sin_a],
+        [0.0, sin_a, cos_a],
+    ]
+
+
+def rotation_y(angle_rad):
+    cos_a = math.cos(angle_rad)
+    sin_a = math.sin(angle_rad)
+    return [
+        [cos_a, 0.0, sin_a],
+        [0.0, 1.0, 0.0],
+        [-sin_a, 0.0, cos_a],
+    ]
+
+
+def rotation_z(angle_rad):
+    cos_a = math.cos(angle_rad)
+    sin_a = math.sin(angle_rad)
+    return [
+        [cos_a, -sin_a, 0.0],
+        [sin_a, cos_a, 0.0],
+        [0.0, 0.0, 1.0],
+    ]
+
+
+def euler_rpy_matrix(roll_deg, pitch_deg, yaw_deg):
+    return mat_mul(
+        mat_mul(rotation_z(math.radians(yaw_deg)), rotation_y(math.radians(pitch_deg))),
+        rotation_x(math.radians(roll_deg)),
+    )
+
+
+def rotation_error_deg(solution_rotation, truth_rotation):
+    delta = mat_mul(mat_transpose(solution_rotation), truth_rotation)
+    trace = delta[0][0] + delta[1][1] + delta[2][2]
+    cos_angle = max(-1.0, min(1.0, (trace - 1.0) / 2.0))
+    return math.degrees(math.acos(cos_angle))
+
+
+def ground_truth_rotation_enu(truth):
+    heading = math.radians(truth["heading"])
+    left = [-math.cos(heading), math.sin(heading), 0.0]
+    forward = [math.sin(heading), math.cos(heading), 0.0]
+    down = [0.0, 0.0, -1.0]
+    heading_matrix = [
+        [left[0], forward[0], down[0]],
+        [left[1], forward[1], down[1]],
+        [left[2], forward[2], down[2]],
+    ]
+    return mat_mul(
+        mat_mul(heading_matrix, rotation_x(math.radians(-truth["pitch"]))),
+        rotation_y(math.radians(wrap_angle_deg(truth["roll"] + 180.0))),
+    )
+
+
+def ground_truth_body_rotation_enu(truth, t_b_gt):
+    return mat_mul(ground_truth_rotation_enu(truth), mat_transpose(t_b_gt["rotation"]))
+
+
+def body_offset_to_enu(t_b_gt, truth):
+    return mat_vec_mul(ground_truth_body_rotation_enu(truth, t_b_gt), t_b_gt["translation"])
+
+
+def legacy_body_offset_to_enu(t_body_gt, heading_deg):
+    heading = math.radians(heading_deg)
+    cos_h = math.cos(heading)
+    sin_h = math.sin(heading)
+    right, forward, up = t_body_gt
+    east = cos_h * right + sin_h * forward
+    north = -sin_h * right + cos_h * forward
+    return east, north, up
+
+
+def ground_truth_to_body_reference(truth, t_b_gt):
+    for key in ("heading", "pitch", "roll"):
+        if key not in truth:
+            raise ValueError("Ground truth lever-arm correction requires heading/pitch/roll in truth samples")
+    gt_east, gt_north, gt_up = body_offset_to_enu(t_b_gt, truth)
+    return add_enu_offset(truth, -gt_east, -gt_north, -gt_up)
+
+
+def extract_yaml_matrix_data(path, key):
+    lines = Path(path).read_text(encoding="utf-8", errors="replace").splitlines()
+    for index, line in enumerate(lines):
+        if line.strip() != f"{key}:":
+            continue
+        data_text = ""
+        for candidate in lines[index + 1 :]:
+            stripped = candidate.strip()
+            if data_text and stripped and not stripped.startswith(("data:", "-", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9")):
+                break
+            if stripped.startswith("data:"):
+                data_text = stripped.split("data:", 1)[1]
+            elif data_text:
+                data_text += " " + stripped
+            if data_text and "]" in data_text:
+                payload = data_text.split("[", 1)[1].split("]", 1)[0]
+                return [float(value.strip()) for value in payload.split(",") if value.strip()]
+    raise ValueError(f"Unable to find matrix data for {key} in {path}")
+
+
+def load_body_from_ground_truth_transform(path):
+    data = extract_yaml_matrix_data(path, "T_B_GT")
+    if len(data) != 16:
+        raise ValueError(f"T_B_GT must contain 16 values, got {len(data)}")
+    return {
+        "rotation": [
+            [data[0], data[1], data[2]],
+            [data[4], data[5], data[6]],
+            [data[8], data[9], data[10]],
+        ],
+        "translation": [data[3], data[7], data[11]],
+    }
+
+
+def attitude_error(solution, truth, t_b_gt=None):
+    if not all(key in solution for key in ("solution_roll", "solution_pitch", "solution_yaw")):
+        return None
+    if t_b_gt is None:
+        return None
+    solution_rotation = euler_rpy_matrix(
+        solution["solution_roll"],
+        solution["solution_pitch"],
+        solution["solution_yaw"],
+    )
+    truth_rotation = ground_truth_body_rotation_enu(truth, t_b_gt)
+    return rotation_error_deg(solution_rotation, truth_rotation)
+
+
+def align_errors(solution_samples, truth_samples, t_b_gt=None):
     rows = []
     truth_index = 0
     origin = None
@@ -191,6 +401,9 @@ def align_errors(solution_samples, truth_samples):
         truth, truth_index = interpolate_truth(truth_samples, sample["utc_tow"], truth_index)
         if truth is None:
             continue
+        raw_truth = truth
+        if t_b_gt is not None:
+            truth = ground_truth_to_body_reference(truth, t_b_gt)
         if origin is None:
             origin = truth
         east, north, up, horizontal, spatial = enu_error(sample, truth)
@@ -219,6 +432,7 @@ def align_errors(solution_samples, truth_samples):
                 "spatial_error_m": spatial,
                 "ape_translation_m": spatial,
                 "ape_horizontal_m": horizontal,
+                "attitude_error_deg": attitude_error(sample, raw_truth, t_b_gt),
                 "fix_quality": sample["fix_quality"],
                 "satellites": sample["satellites"],
             }
@@ -235,11 +449,14 @@ def summarize(rows):
     for key in [
         "ape_translation_m",
         "ape_horizontal_m",
+        "attitude_error_deg",
         "east_error_m",
         "north_error_m",
         "up_error_m",
     ]:
-        values = [row[key] for row in rows]
+        values = [row[key] for row in rows if row.get(key) is not None]
+        if not values:
+            continue
         metrics[key] = {
             "mean": mean(values),
             "rms": rms(values),
@@ -266,6 +483,7 @@ def write_csv(path, rows):
         "truth_up_m",
         "ape_translation_m",
         "ape_horizontal_m",
+        "attitude_error_deg",
         "east_error_m",
         "north_error_m",
         "up_error_m",
@@ -305,10 +523,68 @@ def parse_evaluation_csv(path):
             row["ape_translation_m"] = row["translation_error_m"]
             row["ape_horizontal_m"] = row["horizontal_error_m"]
             row["spatial_error_m"] = row["translation_error_m"]
+            row["solution_roll"] = row.get("solution_roll_deg", 0.0)
+            row["solution_pitch"] = row.get("solution_pitch_deg", 0.0)
+            row["solution_yaw"] = row.get("solution_yaw_deg", 0.0)
             row["fix_quality"] = row.get("solution_status", "")
             row["satellites"] = row.get("num_satellites", 0.0)
             rows.append(row)
     return rows
+
+
+def apply_ground_truth_transform_to_evaluation_rows(rows, t_b_gt):
+    if not rows:
+        return rows
+    origin = None
+    adjusted_rows = []
+    for row in rows:
+        raw_truth = {
+            "lon": row["truth_lon"],
+            "lat": row["truth_lat"],
+            "height": row["truth_height"],
+            "heading": row["truth_heading_deg"],
+            "pitch": row["truth_pitch_deg"],
+            "roll": row["truth_roll_deg"],
+        }
+        truth = ground_truth_to_body_reference(raw_truth, t_b_gt)
+        solution = {
+            "lon": row["solution_lon"],
+            "lat": row["solution_lat"],
+            "height": row["solution_height"],
+            "solution_roll": row["solution_roll_deg"],
+            "solution_pitch": row["solution_pitch_deg"],
+            "solution_yaw": row["solution_yaw_deg"],
+        }
+        if origin is None:
+            origin = truth
+        east, north, up, horizontal, spatial = enu_error(solution, truth)
+        solution_east, solution_north, solution_up = enu_offset(solution, origin)
+        truth_east, truth_north, truth_up = enu_offset(truth, origin)
+
+        adjusted = dict(row)
+        adjusted["truth_lon"] = truth["lon"]
+        adjusted["truth_lat"] = truth["lat"]
+        adjusted["truth_height"] = truth["height"]
+        adjusted["truth_lon_deg"] = truth["lon"]
+        adjusted["truth_lat_deg"] = truth["lat"]
+        adjusted["truth_height_m"] = truth["height"]
+        adjusted["solution_east_m"] = solution_east
+        adjusted["solution_north_m"] = solution_north
+        adjusted["solution_up_m"] = solution_up
+        adjusted["truth_east_m"] = truth_east
+        adjusted["truth_north_m"] = truth_north
+        adjusted["truth_up_m"] = truth_up
+        adjusted["east_error_m"] = east
+        adjusted["north_error_m"] = north
+        adjusted["up_error_m"] = up
+        adjusted["horizontal_error_m"] = horizontal
+        adjusted["translation_error_m"] = spatial
+        adjusted["spatial_error_m"] = spatial
+        adjusted["ape_translation_m"] = spatial
+        adjusted["ape_horizontal_m"] = horizontal
+        adjusted["attitude_error_deg"] = attitude_error(solution, raw_truth, t_b_gt)
+        adjusted_rows.append(adjusted)
+    return adjusted_rows
 
 
 def scale(value, src_min, src_max, dst_min, dst_max):
@@ -580,6 +856,7 @@ def write_summary(path, rows, metrics):
         "Metric notes:",
         "ape_translation_m: preferred APE metric, 3D translation norm sqrt(E^2 + N^2 + U^2).",
         "ape_horizontal_m: 2D trajectory APE on the local East/North plane.",
+        "attitude_error_deg: SO(3) rotation angle after converting truth with full HPR attitude and T_B_GT.",
         "east_error_m/north_error_m/up_error_m: signed ENU components. They explain direction and source of APE.",
         "mean: arithmetic average. For signed ENU components it can hide opposite-direction errors.",
         "rms: root mean square, useful as the main accuracy statistic.",
@@ -587,8 +864,9 @@ def write_summary(path, rows, metrics):
         "",
     ]
     for key, values in metrics.items():
+        unit = "deg" if key == "attitude_error_deg" else "m"
         lines.append(
-            f"{key}: mean={values['mean']:.6f} m, rms={values['rms']:.6f} m, max_abs={values['max_abs']:.6f} m"
+            f"{key}: mean={values['mean']:.6f} {unit}, rms={values['rms']:.6f} {unit}, max_abs={values['max_abs']:.6f} {unit}"
         )
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
@@ -598,6 +876,7 @@ def parse_args():
     parser.add_argument("--evaluation-csv", default=None)
     parser.add_argument("--solution", default="output/rtk_tc_solution.txt")
     parser.add_argument("--truth", default="/home/wbz/桌面/GICI/data/1.1/ground_truth.txt")
+    parser.add_argument("--extrinsics-yaml", default=None)
     parser.add_argument("--output-dir", default="tools/visualization/output")
     return parser.parse_args()
 
@@ -611,6 +890,11 @@ def main():
 
     if args.evaluation_csv:
         rows = parse_evaluation_csv(Path(args.evaluation_csv))
+        if args.extrinsics_yaml:
+            rows = apply_ground_truth_transform_to_evaluation_rows(
+                rows,
+                load_body_from_ground_truth_transform(Path(args.extrinsics_yaml)),
+            )
     else:
         solution_samples = parse_gici_nmea(solution_path)
         truth_samples = parse_truth(truth_path)
@@ -618,7 +902,12 @@ def main():
             raise SystemExit(f"No GGA/RMC solution samples found in {solution_path}")
         if len(truth_samples) < 2:
             raise SystemExit(f"Not enough truth samples found in {truth_path}")
-        rows = align_errors(solution_samples, truth_samples)
+        t_b_gt = (
+            load_body_from_ground_truth_transform(Path(args.extrinsics_yaml))
+            if args.extrinsics_yaml
+            else None
+        )
+        rows = align_errors(solution_samples, truth_samples, t_b_gt=t_b_gt)
 
     if not rows:
         raise SystemExit("No overlapping timestamps between solution and truth")
@@ -632,10 +921,13 @@ def main():
 
     print(f"Aligned samples: {len(rows)}")
     print(f"Time span: {rows[0]['utc_tow']:.3f} -> {rows[-1]['utc_tow']:.3f} seconds-of-week")
-    for key in ("ape_translation_m", "ape_horizontal_m", "east_error_m", "north_error_m", "up_error_m"):
+    for key in ("ape_translation_m", "ape_horizontal_m", "attitude_error_deg", "east_error_m", "north_error_m", "up_error_m"):
+        if key not in metrics:
+            continue
         values = metrics[key]
+        unit = "deg" if key == "attitude_error_deg" else "m"
         print(
-            f"{key}: mean={values['mean']:.4f} m, rms={values['rms']:.4f} m, max_abs={values['max_abs']:.4f} m"
+            f"{key}: mean={values['mean']:.4f} {unit}, rms={values['rms']:.4f} {unit}, max_abs={values['max_abs']:.4f} {unit}"
         )
     print(f"Wrote {output_dir / 'ape_timeseries.svg'}")
     print(f"Wrote {output_dir / 'trajectory_comparison.svg'}")
