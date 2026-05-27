@@ -1,0 +1,21 @@
+GICI APE summary
+samples: 1594
+utc_tow_start: 120974.630
+utc_tow_end: 121133.987
+duration_s: 159.357
+
+Metric notes:
+ape_translation_m: preferred APE metric, 3D translation norm sqrt(E^2 + N^2 + U^2).
+ape_horizontal_m: 2D trajectory APE on the local East/North plane.
+attitude_error_deg: SO(3) rotation angle after converting truth with full HPR attitude and T_B_GT.
+east_error_m/north_error_m/up_error_m: signed ENU components. They explain direction and source of APE.
+mean: arithmetic average. For signed ENU components it can hide opposite-direction errors.
+rms: root mean square, useful as the main accuracy statistic.
+max_abs: largest absolute error observed in the aligned samples.
+
+ape_translation_m: mean=0.098656 m, rms=0.126720 m, max_abs=0.373103 m
+ape_horizontal_m: mean=0.050186 m, rms=0.068718 m, max_abs=0.325437 m
+attitude_error_deg: mean=0.485280 deg, rms=0.520572 deg, max_abs=1.161976 deg
+east_error_m: mean=-0.015765 m, rms=0.050934 m, max_abs=0.198976 m
+north_error_m: mean=0.008643 m, rms=0.046129 m, max_abs=0.296929 m
+up_error_m: mean=-0.036746 m, rms=0.106470 m, max_abs=0.369728 m

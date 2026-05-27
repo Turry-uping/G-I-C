@@ -6,40 +6,46 @@ stream:
         tag: str_gnss_rov
         output_tags: [fmt_gnss_rov]
         type: file
-        path: <data-directory>/gnss_rover.bin
+        path: /home/wbz/桌面/GICI/gici-open/data/1.1/gnss_rover.bin
     - streamer:
         tag: str_gnss_ref
         output_tags: [fmt_gnss_ref]
         type: file
-        path: <data-directory>/gnss_reference.bin
+        path: /home/wbz/桌面/GICI/gici-open/data/1.1/gnss_reference.bin
     - streamer:
         tag: str_gnss_eph
         output_tags: [fmt_gnss_eph]
         type: file
-        path: <data-directory>/gnss_ephemeris.bin
+        path: /home/wbz/桌面/GICI/gici-open/data/1.1/gnss_ephemeris.bin
     - streamer:
         tag: str_dcb_file
         output_tags: [fmt_dcb_file]
         type: file
-        path: <gici-root-directory>/option/CAS0MGXRAP_20221580000_01D_01D_DCB.BSX
+        path: /home/wbz/桌面/GICI/gici-open/option/CAS0MGXRAP_20221580000_01D_01D_DCB.BSX
         enable_time_tag: false
     - streamer:
         tag: str_imu
         output_tags: [fmt_imu]
         type: file
-        path: <data-directory>/imu.bin
+        path: /home/wbz/桌面/GICI/gici-open/data/1.1/imu.bin
         loop_duration: 0.001
     - streamer:
         tag: str_camera
         output_tags: [fmt_camera]
         type: file
-        path: <data-directory>/camera.bin
+        path: /home/wbz/桌面/GICI/gici-open/data/1.1/camera.bin
         buffer_length: 361472 # 752 * 480 + 512 
     - streamer:
         tag: str_rrr_solution_file
         input_tags: [fmt_rrr_solution_file]
         type: file
-        path: <output-directory>/rtk_rrr_solution.txt
+        path: /home/wbz/桌面/GICI/gici-open/output/rtk_rrr_solution.txt
+        enable_time_tag: false
+    - streamer:
+        tag: str_rrr_evaluation_file
+        input_tags: [fmt_rrr_evaluation]
+        type: file
+        path: /home/wbz/桌面/GICI/gici-open/output/rtk_rrr_evaluation_stream_sink.txt
         enable_time_tag: false
     - streamer:
         tag: str_solution_stream
@@ -143,6 +149,14 @@ stream:
         use_esa: true
         use_esd: true
         talker_id: GP
+    - formator:
+        io: output
+        tag: fmt_rrr_evaluation
+        type: evaluation
+        truth_path: /home/wbz/桌面/GICI/gici-open/data/1.1/ground_truth.txt
+        output_csv: /home/wbz/桌面/GICI/gici-open/output/rtk_rrr_evaluation.csv
+        output_summary: /home/wbz/桌面/GICI/gici-open/output/rtk_rrr_evaluation_summary.txt
+        truth_format: inertial-explorer
 
   replay:
     enable: true
@@ -160,7 +174,7 @@ estimate:
     fmt_dcb_file_roles: [code_bias]
     fmt_camera_roles: [mono]
     fmt_imu_roles: [major]
-    output_tags: [fmt_rrr_solution_file, fmt_solution_stream]
+    output_tags: [fmt_rrr_solution_file, fmt_solution_stream, fmt_rrr_evaluation]
     # output_tags: [fmt_rrr_solution_file, fmt_solution_stream,　str_solution, str_solution_odometry, str_solution_path, str_featured_image, str_landmarks]
     output_align_tag: fmt_imu
     output_downsample_rate: 40
@@ -219,7 +233,7 @@ estimate:
       max_iteration: 30
       num_threads: 4
       max_solver_time: 0.5
-      gnss_extrinsics: [-0.035, 0.354, -0.042]
+      gnss_extrinsics: [-0.029, 0.354, -0.042]
       gnss_extrinsics_initial_std: [0.0, 0.0, 0.0]
       time_window_length_slow_motion: 0.05
       time_window_length_dynamic_motion: 0.5
@@ -253,7 +267,7 @@ estimate:
                 cols: 1
                 rows: 4
                 data: [-0.36472323465957157, 0.11530151924890532, 0.0006024586154990503, 0.0020184970860498133]
-            mask: <gici-root-directory>/option/gici-mask.png
+            mask: /home/wbz/桌面/GICI/gici-open/option/gici-mask.png
           T_B_C:
             cols: 4
             rows: 4
@@ -266,4 +280,4 @@ logging:
   enable: true
   min_log_level: 0
   log_to_stderr: true
-  file_directory: <log-directory>
+  file_directory: /home/wbz/桌面/GICI/gici-open/log
