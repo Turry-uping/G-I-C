@@ -32,9 +32,9 @@
 
 ![2026-05-28 RTK-RRR Trajectory Comparison](tools/visualization/output_rrr/trajectory_comparison.svg)
 
-## 2026-05-27
+## 2026-05-24-27
 
-### 今日进展
+### 进展
 
 - 将 Python APE 评估升级为完整姿态矩阵计算。
 - 使用 `T_B_GT` 同时修正 ground truth 位置参考点和姿态坐标系。
