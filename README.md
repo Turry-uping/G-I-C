@@ -1,5 +1,37 @@
 # GICI 实验记录
 
+## 2026-05-28（本次新增）
+
+### 本次修改内容
+
+- 将 RTK-RRR 仿实时回放速度 `replay.speed` 降低到 `0.25`，用于解决日志中的 backend pending 队列积压问题。
+- 重新运行 `tools/visualization/test_plot_position_error.py`，确认评估脚本测试通过。
+- 重新运行 `tools/visualization/plot_position_error.py`，基于最新 `output/rtk_rrr_evaluation.csv` 和 `option/intrinsics_and_extrinsics.yaml` 生成 RTK-RRR 误差评估。
+- 更新 `tools/visualization/output_rrr` 下的 `ape.csv`、`summary.txt` 和 SVG 图表。
+
+### RTK-RRR 评估结果（本次新增）
+
+| 指标 | 结果 |
+| --- | ---: |
+| aligned samples | `1594` |
+| duration | `159.357 s` |
+| 3D APE mean | `0.015590 m` |
+| 3D APE RMS | `0.018120 m` |
+| 3D APE max_abs | `0.088551 m` |
+| horizontal APE RMS | `0.009987 m` |
+| attitude error RMS | `0.472107 deg` |
+| east error RMS | `0.007395 m` |
+| north error RMS | `0.006712 m` |
+| up error RMS | `0.015119 m` |
+
+### RTK-RRR 输出图（本次新增）
+
+![2026-05-28 RTK-RRR APE Timeseries](tools/visualization/output_rrr/ape_timeseries.svg)
+
+![2026-05-28 RTK-RRR ENU Components](tools/visualization/output_rrr/enu_components.svg)
+
+![2026-05-28 RTK-RRR Trajectory Comparison](tools/visualization/output_rrr/trajectory_comparison.svg)
+
 ## 2026-05-27
 
 ### 今日进展

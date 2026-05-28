@@ -8,19 +8,18 @@ skipped_after_truth: 0
 skipped_invalid_solution: 0
 skipped_interpolation_failure: 0
 
-east_error_m: count=1500, mean=-0.0322387, rms=0.289707, stddev=0.287908, min=-0.494824, max=0.502347, max_abs=0.502347, p50=-0.09749, p95=0.325708, p99=0.351988
-north_error_m: count=1500, mean=0.0298418, rms=0.1511, stddev=0.148124, min=-0.241936, max=0.36234, max_abs=0.36234, p50=0.0643301, p95=0.298244, p99=0.314896
-up_error_m: count=1500, mean=-0.111111, rms=0.149531, stddev=0.100069, min=-0.440761, max=0.197707, max_abs=0.440761, p50=-0.0901357, p95=0.0296939, p99=0.114934
-horizontal_error_m: count=1500, mean=0.3235, rms=0.326744, stddev=0.0459262, min=0.178549, max=0.512673, max_abs=0.512673, p50=0.318762, p95=0.415229, p99=0.476949
-translation_error_m: count=1500, mean=0.353776, rms=0.359334, stddev=0.0629579, min=0.216137, max=0.573154, max_abs=0.573154, p50=0.33754, p95=0.499761, p99=0.541558
-roll_error_deg: count=1500, mean=155.346, rms=178.333, stddev=87.5794, min=-179.998, max=179.998, max_abs=179.998, p50=178.13, p95=179.632, p99=179.907
-pitch_error_deg: count=1500, mean=1.88184, rms=2.12108, stddev=0.9786, min=-1.76948, max=4.24422, max_abs=4.24422, p50=1.93483, p95=3.36486, p99=3.80453
-yaw_error_deg: count=1500, mean=-92.7215, rms=126.988, stddev=86.7681, min=-178.93, max=178.828, max_abs=178.93, p50=-137.031, p95=114.596, p99=150.485
-attitude_error_deg: count=1500, mean=218.409, rms=218.936, stddev=15.1787, min=178.095, max=253.695, max_abs=253.695, p50=224.698, p95=231.089, p99=245.971
-velocity_horizontal_error_mps: count=1500, mean=0.059296, rms=0.0785806, stddev=0.0515645, min=0.00217267, max=0.536251, max_abs=0.536251, p50=0.0435221, p95=0.143892, p99=0.281816
-velocity_3d_error_mps: count=1500, mean=0.0710767, rms=0.0872565, stddev=0.0506143, min=0.00369925, max=0.536262, max_abs=0.536262, p50=0.0565158, p95=0.158225, p99=0.282808
+east_error_m: count=1500, mean=-0.0166634, rms=0.27817, stddev=0.277671, min=-0.321943, max=0.325139, max_abs=0.325139, p50=-0.0931482, p95=0.306471, p99=0.31615
+north_error_m: count=1500, mean=0.0183786, rms=0.158084, stddev=0.157012, min=-0.326987, max=0.3241, max_abs=0.326987, p50=0.075028, p95=0.301322, p99=0.315743
+up_error_m: count=1500, mean=-0.0663993, rms=0.0680241, stddev=0.0147786, min=-0.157853, max=-0.0251863, max_abs=0.157853, p50=-0.0658938, p95=-0.0431991, p99=-0.0342873
+horizontal_error_m: count=1500, mean=0.319879, rms=0.319952, stddev=0.00682933, min=0.295473, max=0.343855, max_abs=0.343855, p50=0.319795, p95=0.331544, p99=0.33684
+translation_error_m: count=1500, mean=0.327027, rms=0.327103, stddev=0.00704077, min=0.303592, max=0.355625, max_abs=0.355625, p50=0.326616, p95=0.339551, p99=0.345841
+roll_error_deg: count=1500, mean=156.55, rms=178.34, stddev=85.425, min=-179.985, max=179.998, max_abs=179.998, p50=178.143, p95=179.656, p99=179.921
+pitch_error_deg: count=1500, mean=1.87233, rms=2.10584, stddev=0.963826, min=-1.76404, max=4.22049, max_abs=4.22049, p50=1.93506, p95=3.31633, p99=3.68448
+yaw_error_deg: count=1500, mean=-92.6743, rms=126.968, stddev=86.7897, min=-178.93, max=178.845, max_abs=178.93, p50=-137.051, p95=114.645, p99=150.617
+attitude_error_deg: count=1500, mean=218.405, rms=218.931, stddev=15.1698, min=178.085, max=253.695, max_abs=253.695, p50=224.68, p95=231.004, p99=245.788
+velocity_horizontal_error_mps: count=1500, mean=0.0412303, rms=0.0555515, stddev=0.0372295, min=0.0011235, max=0.193882, max_abs=0.193882, p50=0.0274757, p95=0.128302, p99=0.154177
+velocity_3d_error_mps: count=1500, mean=0.0497295, rms=0.0613833, stddev=0.0359846, min=0.00270833, max=0.197417, max_abs=0.197417, p50=0.0378653, p95=0.131799, p99=0.15812
 
 By solution_status:
-fixed: samples=596, translation_rms=0.343962, horizontal_rms=0.323294
-float: samples=892, translation_rms=0.369104, horizontal_rms=0.328842
-single: samples=12, translation_rms=0.37025, horizontal_rms=0.340468
+fixed: samples=746, translation_rms=0.327531, horizontal_rms=0.32069
+float: samples=754, translation_rms=0.326679, horizontal_rms=0.31922

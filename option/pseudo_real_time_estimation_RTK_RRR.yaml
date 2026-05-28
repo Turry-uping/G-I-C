@@ -47,11 +47,12 @@ stream:
         type: file
         path: /home/wbz/桌面/GICI/gici-open/output/rtk_rrr_evaluation_stream_sink.txt
         enable_time_tag: false
-    - streamer:
-        tag: str_solution_stream
-        input_tags: [fmt_solution_stream]
-        type: tcp-server
-        port: 9001
+    # Disabled by default to avoid TCP port binding failures during offline runs.
+    # - streamer:
+    #     tag: str_solution_stream
+    #     input_tags: [fmt_solution_stream]
+    #     type: tcp-server
+    #     port: 9001
     # - streamer:
     #     tag: str_ros_imu
     #     input_tags: [fmt_imu]
@@ -142,13 +143,13 @@ stream:
         type: nmea 
         use_esa: true
         talker_id: GP
-    - formator:
-        io: output
-        tag: fmt_solution_stream
-        type: nmea 
-        use_esa: true
-        use_esd: true
-        talker_id: GP
+    # - formator:
+    #     io: output
+    #     tag: fmt_solution_stream
+    #     type: nmea
+    #     use_esa: true
+    #     use_esd: true
+    #     talker_id: GP
     - formator:
         io: output
         tag: fmt_rrr_evaluation
@@ -160,7 +161,7 @@ stream:
 
   replay:
     enable: true
-    speed: 1.0
+    speed: 0.25
     start_offset: 0.0
 
 estimate:
@@ -174,7 +175,7 @@ estimate:
     fmt_dcb_file_roles: [code_bias]
     fmt_camera_roles: [mono]
     fmt_imu_roles: [major]
-    output_tags: [fmt_rrr_solution_file, fmt_solution_stream, fmt_rrr_evaluation]
+    output_tags: [fmt_rrr_solution_file, fmt_rrr_evaluation]
     # output_tags: [fmt_rrr_solution_file, fmt_solution_stream,　str_solution, str_solution_odometry, str_solution_path, str_featured_image, str_landmarks]
     output_align_tag: fmt_imu
     output_downsample_rate: 40
