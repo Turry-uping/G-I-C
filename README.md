@@ -97,6 +97,60 @@
 | `T_B_GT` 外参 | `option/intrinsics_and_extrinsics.yaml` |
 | IE 姿态格式转换参考 | `tools/evaluation/format_converters/src/ie_to_nmea.cpp` |
 
+## 后续方案：AHUKEF 前端与因子图融合
+
+### 推荐学术框架
+
+后续研究建议保留 GICI 原始 `RTK/IMU TC` 因子图，将 AHUKEF 松耦合滤波器输出的状态作为后端优化的初值或自适应弱先验，而不是直接用滤波状态完全替代 GNSS/IMU 原始观测。
+
+```mermaid
+flowchart LR
+  GNSS[GNSS 原始观测] --> GRAPH[RTK/IMU TC 因子图]
+  IMU[IMU 原始观测] --> GRAPH
+  GNSS2[GNSS 解算/观测] --> AHUKEF[AHUKEF 松耦合滤波器]
+  IMU2[IMU] --> AHUKEF
+  AHUKEF --> PRIOR[滤波状态初值/弱先验]
+  PRIOR --> GRAPH
+  GRAPH --> OUT[优化后状态]
+```
+
+该方案的核心定位是：AHUKEF 前端提供鲁棒状态预测和不确定性评价，因子图后端继续保留双差伪距、双差载波相位、多普勒、IMU 预积分、车辆运动约束和边缘化先验等原始物理观测模型。
+
+### 融合方式
+
+| 方式 | 用途 | 学术建议 |
+| --- | --- | --- |
+| 状态初值 | 用 AHUKEF 的位置、速度、姿态初始化当前历元或滑窗状态 | 第一阶段优先实现，风险最低 |
+| 弱先验因子 | 将 AHUKEF 状态构造为位姿/速度伪观测因子 | 主方案，可体现滤波器与因子图融合 |
+| 动态权重 | 用 AHUKEF 协方差或质量评分调整先验强度 | 有协方差 `P` 后再做 |
+| 替代原始观测 | 后端只使用 AHUKEF 状态，不再使用 GNSS/IMU 原始观测 | 作为对比实验，不建议作为主框架 |
+
+如果 AHUKEF 输出协方差 `P`，弱先验可采用：
+
+```text
+r_prior = x_graph - x_ahukef
+information = (alpha * P_ahukef)^-1
+```
+
+其中 `alpha` 为协方差膨胀系数，用于避免 AHUKEF 与原始 GNSS/IMU 因子重复使用同源信息。建议从 `10`、`50`、`100` 做消融对比。
+
+### 不建议完全替代原始观测的原因
+
+AHUKEF 当前为松耦合滤波形式，输出状态已经压缩了 GNSS/IMU 信息。如果后端完全用该状态替代 GNSS/IMU 原始观测，因子图将失去卫星级、频点级、双差载波相位、模糊度固定和多普勒等信息，整体问题会从 `RTK/IMU tightly-coupled factor graph` 变为 `AHUKEF state smoothing`。
+
+因此，论文主线建议表述为：
+
+> 在因子图优化前引入 AHUKEF 松耦合前端，生成鲁棒状态估计及其不确定性，并将其作为后端 RTK/IMU 紧耦合因子图的初值或自适应弱先验约束，从而提高复杂环境下的优化稳定性和水平定位精度。
+
+### 推荐消融实验
+
+| 实验组 | 说明 | 目的 |
+| --- | --- | --- |
+| GICI RTK/IMU TC | 原始 `option/pseudo_real_time_estimation_RTK_TC_32.yaml` | 基线 |
+| AHUKEF only | 只评估 AHUKEF 松耦合滤波输出 | 验证前端滤波器自身效果 |
+| AHUKEF state graph | 用滤波状态替代原始观测进入后端 | 对比状态平滑框架 |
+| RTK/IMU TC + AHUKEF prior | 原始观测因子图加 AHUKEF 初值/弱先验 | 推荐主方案 |
+
 ## 历史记录
 
 ### 2026-05-28：RTK-RRR 评估
