@@ -1,0 +1,25 @@
+GICI evaluation summary
+aligned_samples: 4000
+timestamp_gpst_start: 111860
+timestamp_gpst_end: 112260
+duration_s: 400.23
+skipped_before_truth: 0
+skipped_after_truth: 0
+skipped_invalid_solution: 0
+skipped_interpolation_failure: 0
+
+east_error_m: count=4000, mean=0.254771, rms=0.265036, stddev=0.0730501, min=-0.532081, max=0.776242, max_abs=0.776242, p50=0.258455, p95=0.312024, p99=0.529743
+north_error_m: count=4000, mean=0.181858, rms=0.199973, stddev=0.0831676, min=-0.216674, max=0.996489, max_abs=0.996489, p50=0.17495, p95=0.349156, p99=0.4307
+up_error_m: count=4000, mean=-0.0345931, rms=0.0970748, stddev=0.0907019, min=-0.515782, max=0.339018, max_abs=0.515782, p50=-0.0520466, p95=0.108422, p99=0.289661
+horizontal_error_m: count=4000, mean=0.323785, rms=0.332014, stddev=0.0734644, min=0.00283708, max=1.1047, max_abs=1.1047, p50=0.312633, p95=0.417411, p99=0.68525
+translation_error_m: count=4000, mean=0.336045, rms=0.345915, stddev=0.0820423, min=0.00283755, max=1.17032, max_abs=1.17032, p50=0.319793, p95=0.46506, p99=0.723012
+roll_error_deg: count=4000, mean=177.396, rms=177.668, stddev=9.81722, min=-179.995, max=179.94, max_abs=179.995, p50=177.648, p95=179.027, p99=179.562
+pitch_error_deg: count=4000, mean=2.85024, rms=2.94232, stddev=0.730319, min=0.371795, max=4.55585, max_abs=4.55585, p50=2.89213, p95=3.71939, p99=4.03076
+yaw_error_deg: count=4000, mean=-124.598, rms=124.643, stddev=3.35634, min=-147.181, max=-109.161, max_abs=147.181, p50=-124.27, p95=-121.534, p99=-112.978
+attitude_error_deg: count=4000, mean=217.039, rms=217.049, stddev=2.08089, min=208.278, max=230.364, max_abs=230.364, p50=216.739, p95=220.434, p99=226.109
+velocity_horizontal_error_mps: count=4000, mean=0.0445835, rms=0.256926, stddev=0.253028, min=0.000147247, max=4.96629, max_abs=4.96629, p50=0.013352, p95=0.0623053, p99=0.92182
+velocity_3d_error_mps: count=4000, mean=0.0530014, rms=0.258269, stddev=0.252772, min=0.000393407, max=4.96643, max_abs=4.96643, p50=0.0232674, p95=0.0803116, p99=0.921823
+
+By solution_status:
+fixed: samples=2604, translation_rms=0.319297, horizontal_rms=0.310316
+float: samples=1396, translation_rms=0.390749, horizontal_rms=0.369095
